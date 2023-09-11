@@ -108,8 +108,7 @@ func (c *Command) xrayCmd(cmd string) error {
 	return c.exec(cmd, "xrays", x, true)
 }
 
-// Exec the Command by showing associated display.
-func (c *Command) run(cmd, path string, clearStack bool) error {
+func (c *Command) runWithHistory(cmd, path string, clearStack, pushHistory bool) error {
 	if c.specialCmd(cmd, path) {
 		return nil
 	}
@@ -125,7 +124,7 @@ func (c *Command) run(cmd, path string, clearStack bool) error {
 		if len(cmds) == 2 {
 			return useContext(c.app, cmds[1])
 		}
-		return c.exec(cmd, gvr, c.componentFor(gvr, path, v), clearStack)
+		return c.execWithHistory(cmd, gvr, c.componentFor(gvr, path, v), clearStack, pushHistory)
 	case "dir":
 		if len(cmds) != 2 {
 			return errors.New("You must specify a directory")
@@ -143,8 +142,13 @@ func (c *Command) run(cmd, path string, clearStack bool) error {
 		if !c.alias.Check(command) {
 			return fmt.Errorf("`%s` Command not found", cmd)
 		}
-		return c.exec(cmd, gvr, c.componentFor(gvr, path, v), clearStack)
+		return c.execWithHistory(cmd, gvr, c.componentFor(gvr, path, v), clearStack, pushHistory)
 	}
+}
+
+// Exec the Command by showing associated display.
+func (c *Command) run(cmd, path string, clearStack bool) error {
+	return c.runWithHistory(cmd, path, clearStack, true)
 }
 
 func (c *Command) defaultCmd() error {
@@ -241,6 +245,10 @@ func (c *Command) componentFor(gvr, path string, v *MetaViewer) ResourceViewer {
 }
 
 func (c *Command) exec(cmd, gvr string, comp model.Component, clearStack bool) (err error) {
+	return c.execWithHistory(cmd, gvr, comp, clearStack, true) 
+}
+
+func (c *Command) execWithHistory(cmd, gvr string, comp model.Component, clearStack, pushHistory bool) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			log.Error().Msgf("Something bad happened! %#v", e)
@@ -261,7 +269,7 @@ func (c *Command) exec(cmd, gvr string, comp model.Component, clearStack bool) (
 	if comp == nil {
 		return fmt.Errorf("No component found for %s", gvr)
 	}
-	c.app.Flash().Infof("Viewing %s...", client.NewGVR(gvr).R())
+	// c.app.Flash().Infof("Viewing %s...", client.NewGVR(gvr).R())
 	if tokens := strings.Split(cmd, " "); len(tokens) >= 2 {
 		cmd = tokens[0]
 	}
@@ -272,8 +280,9 @@ func (c *Command) exec(cmd, gvr string, comp model.Component, clearStack bool) (
 	if err := c.app.inject(comp, clearStack); err != nil {
 		return err
 	}
-
-	c.app.cmdHistory.Push(cmd)
-
+	if pushHistory {
+		log.Info().Msgf("Command %s, pushing history", cmd)
+		c.app.cmdHistory.Push(cmd)
+	}
 	return
 }

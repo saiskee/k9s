@@ -47,6 +47,7 @@ type App struct {
 	cancelFn      context.CancelFunc
 	clusterModel  *model.ClusterInfo
 	cmdHistory    *model.History
+	currentHistoryIndex int
 	filterHistory *model.History
 	conRetry      int32
 	showHeader    bool
@@ -189,6 +190,8 @@ func (a *App) bindKeys() {
 		ui.KeyHelp:     ui.NewSharedKeyAction("Help", a.helpCmd, false),
 		tcell.KeyCtrlA: ui.NewSharedKeyAction("Aliases", a.aliasCmd, false),
 		tcell.KeyEnter: ui.NewKeyAction("Goto", a.gotoCmd, false),
+		91: ui.NewKeyAction("Prev", a.PrevInHistory, false),
+		93: ui.NewKeyAction("Next", a.NextInHistory, false),
 	})
 }
 
@@ -536,6 +539,36 @@ func (a *App) setIndicator(l model.FlashLevel, msg string) {
 	}
 }
 
+func (a *App) PrevInHistory(evt *tcell.EventKey) *tcell.EventKey {
+	cmdList := a.cmdHistory.List()
+	if len(cmdList) == 0 {
+		return nil
+	}
+	if a.currentHistoryIndex >= len(cmdList) - 1 {
+		return nil
+	}
+	a.currentHistoryIndex++
+	cmd := cmdList[a.currentHistoryIndex]
+	a.goToResourceWithHistory(cmd, "", true, false)
+	a.ResetCmd()
+	return nil
+}
+
+func (a *App) NextInHistory(evt *tcell.EventKey) *tcell.EventKey {
+	cmdList := a.cmdHistory.List()
+	if len(cmdList) == 0 {
+		return nil
+	}
+	if a.currentHistoryIndex <= 0 {
+		return nil
+	}
+	a.currentHistoryIndex--
+	cmd := cmdList[a.currentHistoryIndex]
+	a.goToResourceWithHistory(cmd, "", true, false)
+	a.ResetCmd()
+	return nil
+}
+
 // PrevCmd pops the command stack.
 func (a *App) PrevCmd(evt *tcell.EventKey) *tcell.EventKey {
 	if !a.Content.IsLast() {
@@ -573,6 +606,7 @@ func (a *App) toggleCrumbsCmd(evt *tcell.EventKey) *tcell.EventKey {
 
 func (a *App) gotoCmd(evt *tcell.EventKey) *tcell.EventKey {
 	if a.CmdBuff().IsActive() && !a.CmdBuff().Empty() {
+		log.Info().Msgf("Goto %q", a.CmdBuff().GetText())
 		a.gotoResource(a.GetCmd(), "", true)
 		a.ResetCmd()
 		return nil
@@ -639,7 +673,12 @@ func (a *App) aliasCmd(evt *tcell.EventKey) *tcell.EventKey {
 }
 
 func (a *App) gotoResource(cmd, path string, clearStack bool) {
-	err := a.command.run(cmd, path, clearStack)
+	a.currentHistoryIndex = 0
+	a.goToResourceWithHistory(cmd, path, clearStack, true)
+}
+
+func (a *App) goToResourceWithHistory(cmd, path string, clearStack, pushHistory bool) {
+	err := a.command.runWithHistory(cmd, path, clearStack, pushHistory)
 	if err != nil {
 		dialog.ShowError(a.Styles.Dialog(), a.Content.Pages, err.Error())
 	}

@@ -29,13 +29,15 @@ func (h *History) List() []string {
 
 // Push adds a new item.
 func (h *History) Push(c string) {
+	log.Info().Msgf("History PUSH %q, here is history: %v", c, h.commands)
 	if c == "" {
 		return
 	}
-
 	c = strings.ToLower(c)
-	if i := h.indexOf(c); i != -1 {
-		return
+	if len(h.commands) != 0 {
+		if h.commands[0] == c {
+			return
+		}
 	}
 	if len(h.commands) < h.limit {
 		h.commands = append([]string{c}, h.commands...)
